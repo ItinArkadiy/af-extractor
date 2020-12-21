@@ -1,0 +1,40 @@
+version: 0.2
+phases:
+  install:
+    runtime-versions:
+      java: corretto8
+    commands:
+      - add-apt-repository ppa:rmescandon/yq
+      - apt-get -y install yq
+  pre_build:
+      commands:
+        - echo Running tests
+        - sbt test
+        - $(chmod +x codebuild/$BUILD_ARTIFACT)
+        - TAG="$ENVIRONMENT_NAME-$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | head -c 8)"
+        - sed -i 's@CONTAINER_IMAGE@'"$REPOSITORY_URI:$TAG"'@' codebuild/$DEPLOYMENT_FILE
+        - $(aws ecr get-login --no-include-email)
+        - export KUBECONFIG=$HOME/.kube/config
+        - kubectl version --short --client
+  build:
+    commands:
+      - codebuild/$BUILD_ARTIFACT
+      
+  post_build:
+    commands:
+      - CREDENTIALS=$(aws sts assume-role --role-arn $EKS_KUBECTL_ROLE_ARN --role-session-name codebuild-kubectl --duration-seconds 900)
+      - export AWS_ACCESS_KEY_ID="$(echo ${CREDENTIALS} | jq -r '.Credentials.AccessKeyId')"
+      - export AWS_SECRET_ACCESS_KEY="$(echo ${CREDENTIALS} | jq -r '.Credentials.SecretAccessKey')"
+      - export AWS_SESSION_TOKEN="$(echo ${CREDENTIALS} | jq -r '.Credentials.SessionToken')"
+      - export AWS_EXPIRATION=$(echo ${CREDENTIALS} | jq -r '.Credentials.Expiration')
+      - aws eks update-kubeconfig --name $EKS_CLUSTER_NAME
+      - yq w -i codebuild/$DEPLOYMENT_FILE "spec.template.spec.containers[0].args[+]" -- $ENV_ARG_1
+      - yq w -i codebuild/$DEPLOYMENT_FILE "spec.template.spec.containers[0].args[+]" -- $ENV_ARG_2
+      - yq w -i codebuild/$DEPLOYMENT_FILE "spec.template.spec.containers[0].args[+]" -- $ENV_ARG_3
+      - yq w -i codebuild/$DEPLOYMENT_FILE "spec.template.spec.containers[0].args[+]" -- $ENV_ARG_4
+      - yq w -i codebuild/$DEPLOYMENT_FILE "spec.template.spec.containers[0].args[+]" -- $ENV_ARG_5
+      - yq w -i codebuild/$DEPLOYMENT_FILE "spec.template.spec.containers[0].args[+]" -- $ENV_ARG_6
+      - kubectl apply -f codebuild/$DEPLOYMENT_FILE
+      - printf '[{"name":"direct-mls-extractor","imageUri":"%s"}]' $REPOSITORY_URI:$TAG > build.json
+artifacts:
+  files: build.json

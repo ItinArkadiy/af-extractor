@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    run: direct-mls-extractor
+  name: direct-mls-extractor
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      run: direct-mls-extractor
+  minReadySeconds: 40
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        run: direct-mls-extractor
+    spec:
+      containers:
+      - image: CONTAINER_IMAGE
+        imagePullPolicy: Always
+        name: direct-mls-extractor
+        command: ["/root/direct-mls-extractor/bin/direct-mls-extractor"]
+        args: []
+        env:
+          - name: DD_AGENT_HOST
+            valueFrom:
+              fieldRef:
+                fieldPath: status.hostIP
+        ports:
+        - containerPort: 443
+          protocol: TCP
+        resources:
+          limits:
+            memory: 4Gi
+          requests:
+            memory: 4Gi
+      nodeSelector:
+        team: data-1
+        node.kubernetes.io/instance-type: r5.xlarge
+      dnsPolicy: ClusterFirst
+      imagePullSecrets:
+      - name: regsecret
+      restartPolicy: Always 
